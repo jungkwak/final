@@ -1,0 +1,161 @@
+---
+title: "myfirstRmd"
+date: '2022-03-21'
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Shooting Project Data set
+
+For this project, I am going to analyze trends in the NYPD shooting Incident. First step is to read in the data The summary of the data is shown below.
+
+```{r}
+#imports
+#install.packages("tidyverse")
+#install.packages("lubridate")
+#install.packages("readr")
+#install.packages("utils")
+#install.packages("http://cran.rstudio.com/bin/windows/contrib/3.1/plyr_1.8.2.zip", repos = NULL) 
+#install.packages("pROC", dependencies=TRUE)
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(pROC)
+```
+
+```{r}
+url_in <-"https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+firstdata <- read_csv(url_in)
+View(firstdata)
+
+```
+
+What does the data contain? I will be taking a look at the summary. Since I'm interested in finding out how victim race, victim age group, victim sex, and shooting location relates to murder (statistical_murder_flag), the first step is to delete variables I won't be using for sure in this analysis.
+
+1\. Delete variable "INCIDENT_KEY" (Unique to each incident)
+
+2\. Delete "JURISTICTION_CODE" and "LOCATION_DESC", and utilize other location data for this analysis.
+
+3\. Delete all long/lat data that's unique to each incident.
+
+4\. Delete PERP_AGE_GROUP, PERP_SEX, PERP_RACE. Since this is an open ended project where I can choose what to analyze, I will use the victim data and delete perp data (since it is less filled out).
+
+```{r}
+summary(firstdata)
+```
+
+Delete the above mentioned variables.
+
+```{r}
+df <- select (firstdata, -c ("INCIDENT_KEY", "JURISDICTION_CODE", "LOCATION_DESC", "PERP_AGE_GROUP", "PERP_SEX", "PERP_RACE","X_COORD_CD", "Y_COORD_CD", "Latitude","Longitude", "Lon_Lat"))
+
+```
+
+OCCUR_DATE is a character based on the summary. I will convert it to object.
+
+```{r}
+df$OCCUR_DATE <-as.Date(df$OCCUR_DATE, format =  "%m/%d/%Y")
+summary(df)
+```
+
+BORO, PRECINCT, VIC_AGE_GROUP, VIC_SEX, VIC_RACE are categorical variables. I will convert them to be used as factors.
+
+```{r}
+df$BORO <- as.factor(df$BORO)
+df$PRECINCT <-as.factor(df$PRECINCT)
+df$VIC_AGE_GROUP <-as.factor(df$VIC_AGE_GROUP)
+df$VIC_SEX <-as.factor(df$VIC_SEX)
+df$VIC_RACE <-as.factor(df$VIC_RACE)
+summary(df)
+```
+
+STATISTIAL_MURDER_FLAG will the independent variable for this project. If shooting resulted in murder, it will have the value 1 (0 if no murder occurred). Then, this variable is converted as factor.
+
+```{r}
+df$STATISTICAL_MURDER_FLAG[which(df$STATISTICAL_MURDER_FLAG == 'FALSE')] <- 0
+df$STATISTICAL_MURDER_FLAG[which(df$STATISTICAL_MURDER_FLAG == 'TRUE')] <- 1
+df$STATISTICAL_MURDER_FLAG <- as.factor(df$STATISTICAL_MURDER_FLAG)
+```
+
+The data looks good to start modeling. I've decided to just use the following variables for my analysis: BORO, VIC_AGE_GROUP, VIC_SEX, VIC_RACE. Does the victim information and location predict the outcome of the shooting?
+
+```{r}
+summary(df)
+```
+
+Check to make sure there is no missing data. This dataset does not, but if it did, we would have to fill in or delete missing values.
+
+```{r}
+colSums(is.na(df))
+
+```
+
+There are no missing data. Let's visualize some data.
+
+```{r pressure, echo=FALSE}
+graph1 <-ggplot(data=df) + geom_bar(mapping = aes(x=BORO))
+graph1
+```
+
+Simple visualization of BORO (location where shooting occured) and the count of shootings at each location. While the data shows Brooklyn had the most shootings and Staten Island had the least, this graph is misleading since the count isn't in relation to the population density. A better analysis would be count/per certain number of people in population (for example, count/1000 people).
+
+```{r}
+graph2<- ggplot(df, aes(x=VIC_AGE_GROUP, fill=VIC_RACE)) +    geom_bar() 
+graph2
+```
+
+This graph shows that most victims were in age groups 18-24 and 25-44. The majority of the victims were black and the least is American Indian/Alaskan Native but most races are seen across most groups. Again, this graph is could be improved with information of the general population's race percentages/count. For example, the most likely reason American Indian/Alaskan Native has so few victims is likely due to the low percentage of these individuals in total population. The same logic applies to age groups. It would be also interesting to see if behavior among age groups groups varies (such as more people between ages 18-44 are out late at night).
+
+```{r}
+
+#Use 70% of dataset as training set and remaining 30% as testing set
+sample <- sample(c(TRUE, FALSE), nrow(df), replace=TRUE, prob=c(0.7,0.3))
+train <- df[sample, ]
+test <- df[!sample, ] 
+```
+
+
+```{r}
+set.seed(100)
+model <- glm(STATISTICAL_MURDER_FLAG ~ BORO + VIC_AGE_GROUP + VIC_SEX + VIC_RACE,  data = train, family = binomial)
+```
+
+A basic model as STATISTICAL_MURDER_FLAG as y variable and boro, vic_age_group, vic_sex, and vic_race as x is performed.
+
+```{r}
+summary(model)
+```
+
+The results show that the age group of the victims was statistically significant. Race, sex, and boro was not statistically significant in predicting murder. 
+
+ This model has several issues/biases.
+
+1.  There might be a strong correlation between some of these variables that might strongly affect the results (I haven't done a correlation analysis).
+2.  I picked the variables I wanted to look into (victim information and boro) because I wanted to see which of these variables affect the outcome. However, for a real analysis, I would look at each individual potential x variable to see if it is worth looking into and perform more data transformations.
+3.  There's a lot of bias, starting with the choices I've made as x variables, questions I wanted answered, to which visualizations I've selected to include in this project.
+4.  With a basic logistic linear model, I would have ideally check each individual variable to y outcome, and combined effects of variables before I build a final model. 
+5. Ideally, I would run several models to compare to this one and select the best one.
+6.  Another possible bias is that I deleted the perp data and other locational data. It's possible that if I include the data that I've excluded, then the results could change (for example, victim age might be be statistically significant anymore). 
+
+The results show that age group is important for the outcome of murder, but not "how". Are older individuals more likely to be murdered? Are there more murders in groups with great % population? It would be interesting to investigate further. 
+
+```{r}
+predicted <- predict(model, test, type="response")
+```
+To evaluate how well my model predicts, I used the test set to predict the outcome probability. Then, AUC of the model was evaluated. 
+```{r}
+library(pROC)
+auc(test$STATISTICAL_MURDER_FLAG, predicted)
+```
+The results of AUC is 0.57. If this value was close to .5, the porbability is close to chance (a value close to 1 would indicate an great predictor model). Based on these results, my model built using the victim and boro information, were not good predictors for the outcome of statistical murder flag. The model performed slighly above random chance. It is important to note that this model has a lot of potential concerns to think about. Here are some that comes to mind: 
+1. Were there enough deaths to build an accurate model? Most of the outcome was 0 (19085=0 vs. 45000=1). There might've not been enough 0 values to generate an accurate model. It would be usefult to look into this further. One possible solution could be placing more weight on the value of interest (1).  
+2. Would more data manipulations, such as polynomials, affected the outcome? 
+3. What variables could we have included into this dataset that might improve the model? Maybe victim's home location? Crime rates at each boro location? number of shots the victim had? and so on. 
+4. How would machine learning algorithms perform? Building multiple models and comparing would be ideal and interesting to explore. 
